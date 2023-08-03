@@ -35,7 +35,6 @@ class HumanEval(Task):
 
     def __init__(self):
         super().__init__(
-            stop_words=["\nclass", "\ndef", "\n#", "\n@", "\nprint", "\nif"],
             requires_execution=True,
         )
 
@@ -45,28 +44,27 @@ class HumanEval(Task):
 
     def get_prompt(self, doc):
         """Builds the prompt for the LM to generate from."""
-        return doc["prompt"].strip()
+        return doc["prompt"]
 
     def get_reference(self, doc):
         """Builds the reference solution for the doc (sample from the test dataset)."""
         test_func = doc["test"]
         entry_point = f"check({doc['entry_point']})"
-        return "\n" + test_func + "\n" + entry_point
+        return test_func + "\n" + entry_point
 
-    @staticmethod
-    def _stop_at_stop_token(decoded_string, stop_tokens):
+    def eval_normalizer(self, answer: str) -> str:
         """
-        Produces the prefix of decoded_string that ends at the first occurrence of
-        a stop_token.
-        WARNING: the decoded_string *must not* include the prompt, which may have stop tokens
-        itself.
+        Retrieves the code for the entry point function by cutting at the first non-indented line.
+        (This avoids syntax errors in dead code.)
         """
-        min_stop_index = len(decoded_string)
-        for stop_token in stop_tokens:
-            stop_index = decoded_string.find(stop_token)
-            if stop_index != -1 and stop_index < min_stop_index:
-                min_stop_index = stop_index
-        return decoded_string[:min_stop_index]
+        split = answer.split("\n")
+        s = split[0]
+        for l in split[1:]:
+            if not l or l[0:2] == "  ":
+                s += "\n" + l
+            else:
+                break
+        return s
 
     def postprocess_generation(self, generation, idx):
         """Defines the postprocessing for a LM generation.
@@ -78,7 +76,8 @@ class HumanEval(Task):
         """
         prompt = self.get_prompt(self.dataset["test"][idx])
         generation = generation[len(prompt) :]
-        return prompt + self._stop_at_stop_token(generation, self.stop_words)
+        generation = self.eval_normalizer(generation)
+        return prompt + generation
 
     def process_results(self, generations, references):
         """Takes the list of LM generations and evaluates them against ground truth references,
