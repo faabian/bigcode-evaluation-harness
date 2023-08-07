@@ -35,6 +35,7 @@ class HumanEval(Task):
 
     def __init__(self):
         super().__init__(
+            stop_words=[],
             requires_execution=True,
         )
 
